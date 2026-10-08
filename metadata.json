@@ -1,0 +1,6 @@
+{
+  "name": "حديث ريلز | HadithReels",
+  "description": "تطبيق أندرويد متكامل واستوديو احترافي لإنتاج وتصميم بطاقات وفيديوهات الأحاديث النبوية الشريفة لـ Reels و Shorts بدقة 1080p وحفظها في المعرض.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
