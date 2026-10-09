@@ -97,7 +97,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     theme,
   };
 
-  // 1. Export High-Res PNG & Save to Android
+  // 1. Export High-Res PNG & Save to Android Phone
   const handleExportImage = async () => {
     if (isBusy) return;
     try {
@@ -152,15 +152,23 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // 3. Save Video Directly to Device (بدون Share Sheet)
+  // 3. Save Video Directly to Device Storage (مستنداً لبيئة الأندرويد و WebView)
   const handleSaveVideoToPhone = async () => {
     if (!generatedVideo) return;
     try {
       setExportNotice(null);
       setErrorMessage(null);
       const filename = `hadith-reel-${hadith.id}.${generatedVideo.extension}`;
-      
-      // التنزيل المباشر برابط Blob مؤقت بدلاً من navigator.share
+
+      // استخدام الدالة المخصصة للحفظ المباشر داخل نظام الأندرويد
+      await saveMediaToAndroidPhone(
+        generatedVideo.blob,
+        filename,
+        generatedVideo.mimeType,
+        `حديث نبوي شريف: ${hadith.narrator}`
+      );
+
+      // احتياطي المتصفح العادي
       const a = document.createElement('a');
       a.href = generatedVideo.objectUrl;
       a.download = filename;
@@ -168,7 +176,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       a.click();
       document.body.removeChild(a);
 
-      setExportNotice('تم بدء تنزيل وحفظ الفيديو على جهازك بنجاح!');
+      setExportNotice('تم حفظ الفيديو وتنزيله على هاتفك بنجاح!');
     } catch (err: any) {
       console.error('Error saving video to phone:', err);
       setErrorMessage(err?.message || 'فشل حفظ الفيديو على الجهاز');
@@ -334,7 +342,7 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
                   : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
               } disabled:opacity-50`}
             >
-              كامل القراءة ({hadith.audioDuration || 30}ثانية)
+              كامل القراءة ({hadith.audioDuration || 30} ثانية)
             </button>
             <button
               onClick={() => setVideoDurationMode('short')}
