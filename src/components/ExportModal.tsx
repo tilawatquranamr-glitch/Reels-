@@ -86,7 +86,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const currentSettings: ExportSettings = {
     width: 720,
-    height: 1280, // Optimized 720x1280 mobile reels resolution (no OOM crashes)
+    height: 1280,
     fontFamily,
     fontSize: Math.round(fontSize * 1.3),
     showTashkeel,
@@ -111,7 +111,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         `hadith-reel-${hadith.id}.png`,
         `حديث نبوي: ${hadith.narrator}`
       );
-      setExportNotice('تم تصدير وحفظ صورة الريلز بنجاح في جهازك!');
+      setExportNotice('تم تصدير وحفظ صورة الريال بنجاح في جهازك!');
     } catch (err: any) {
       console.error('Error exporting image:', err);
       setErrorMessage(err?.message || 'حدث خطأ أثناء حفظ الصورة');
@@ -129,13 +129,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       setExportNotice(null);
       setErrorMessage(null);
 
-      // Clean old video object URL if any
       if (generatedVideo?.objectUrl) {
         URL.revokeObjectURL(generatedVideo.objectUrl);
         setGeneratedVideo(null);
       }
 
-      // Max 60s for full narration to prevent huge memory spikes, or 15s for short clip
       const targetDuration = videoDurationMode === 'full'
         ? Math.min(hadith.audioDuration || 30, 60)
         : 15;
@@ -145,29 +143,32 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       });
 
       setGeneratedVideo(result);
-      setExportNotice('تم إنشاء فيديو الريلز بنجاح! اضغط على زر "حفظ الفيديو على الهاتف" للتحميل.');
+      setExportNotice('تم إنشاء الفيديو بنجاح! اضغط على "حفظ الفيديو على الهاتف" للتنزيل.');
     } catch (err: any) {
       console.error('Error generating video:', err);
-      setErrorMessage(err?.message || 'حدث خطأ غير متوقع أثناء معالجة وتوليد الفيديو');
+      setErrorMessage(err?.message || 'حدث خطأ أثناء إنشاء الفيديو');
     } finally {
       setIsExportingVideo(false);
     }
   };
 
-  // 3. Save the generated video to phone / gallery
+  // 3. Save Video Directly to Device (بدون Share Sheet)
   const handleSaveVideoToPhone = async () => {
     if (!generatedVideo) return;
     try {
       setExportNotice(null);
       setErrorMessage(null);
       const filename = `hadith-reel-${hadith.id}.${generatedVideo.extension}`;
-      await saveMediaToAndroidPhone(
-        generatedVideo.blob,
-        filename,
-        generatedVideo.mimeType,
-        `ريلز حديث نبوي شريف: ${hadith.narrator}`
-      );
-      setExportNotice('تم بدء تنزيل وحفظ الفيديو بنجاح على هاتفك!');
+      
+      // التنزيل المباشر برابط Blob مؤقت بدلاً من navigator.share
+      const a = document.createElement('a');
+      a.href = generatedVideo.objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setExportNotice('تم بدء تنزيل وحفظ الفيديو على جهازك بنجاح!');
     } catch (err: any) {
       console.error('Error saving video to phone:', err);
       setErrorMessage(err?.message || 'فشل حفظ الفيديو على الجهاز');
@@ -184,7 +185,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       await generateHadithBundleZip(hadith, theme, (status) => {
         setZipStatusText(status);
       });
-      setExportNotice('تم تحميل حزمة ZIP الكاملة بنجاح!');
+      setExportNotice('تم إعداد وتحميل حزمة ZIP بنجاح!');
     } catch (err: any) {
       console.error('Error generating ZIP:', err);
       setErrorMessage(err?.message || 'حدث خطأ أثناء تجميع ملف ZIP');
@@ -196,16 +197,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   // 5. Copy Formatted Text for Social Media
   const handleCopyText = async () => {
     const formatted = `✨ حديث نبوي شريف ✨
-═══════════════════
+
 ${hadith.text}
 
-🎙️ رواه: ${hadith.narrator}
-📚 المصدر: ${hadith.source} (${hadith.grade})
-🔊 بصوت القارئ: ${hadith.reciterName || 'حمد الدريهم'}
+📖 رواية: ${hadith.narrator}
+📚 المصدر: ${hadith.source} ${hadith.grade ? `(${hadith.grade})` : ''}
+🎙️ الصوت: ${hadith.reciterName || 'حمد الدريهم'}
 ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
-═══════════════════
-تم الإنشاء عبر تطبيق "حديث ريلز" للأندرويد
-#حديث_شريف #ريلز_إسلامية #سنة_نبوية #أحاديث #حديث_ريلز`;
+
+تم الإنشاء عبر تطبيق حديث ريلز للأندرويد
+#حديث_شريف #سنة_نبوية #أحاديث #حديث_ريلز`;
 
     try {
       await navigator.clipboard.writeText(formatted);
@@ -216,40 +217,31 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
     }
   };
 
-  // 6. Native Share API (Android / Mobile)
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'حديث نبوي شريف',
-          text: `${hadith.text}\n\nرواه: ${hadith.narrator}\n${hadith.source}`,
-        });
-      } catch (e) {
-        console.log('Share canceled');
-      }
-    } else {
-      handleCopyText();
-    }
+  // 6. Direct WhatsApp Share
+  const handleWhatsAppShare = () => {
+    const text = `✨ *حديث نبوي شريف*\n\n« ${hadith.text} »\n\n📖 *رواية:* ${hadith.narrator}\n📚 *المصدر:* ${hadith.source}\n\nتم الإنشاء بواسطة تطبيق حديث ريلز 🕌`;
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(whatsappUrl, '_blank');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto text-slate-100 shadow-2xl space-y-4">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
               <Download className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-base text-slate-100">تصدير وحفظ الفيديو</h3>
-              <p className="text-xs text-slate-400">توليد مستقر وخفيف لأجهزة أندرويد وكروم</p>
+              <h3 className="font-bold text-base text-slate-100">حفظ وتصدير الفيديو</h3>
+              <p className="text-xs text-slate-400">خيارات التصدير والأندرويد المتاحة</p>
             </div>
           </div>
           <button
             onClick={onClose}
             disabled={isBusy}
-            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition disabled:opacity-50"
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition disabled:opacity-50"
           >
             <X className="w-5 h-5" />
           </button>
@@ -257,7 +249,7 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
 
         {/* Success Notice */}
         {exportNotice && (
-          <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2">
+          <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-500/30 flex items-center gap-2 text-xs text-emerald-300">
             <CheckCircle className="w-4 h-4 shrink-0 text-emerald-400" />
             <span>{exportNotice}</span>
           </div>
@@ -265,7 +257,7 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
 
         {/* Error Notice */}
         {errorMessage && (
-          <div className="p-3 rounded-2xl bg-red-950/60 border border-red-500/40 text-red-300 text-xs font-semibold flex items-center gap-2">
+          <div className="p-3 rounded-2xl bg-red-950/60 border border-red-500/30 flex items-center gap-2 text-xs text-red-300">
             <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
             <span>{errorMessage}</span>
           </div>
@@ -273,33 +265,33 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
 
         {/* Video Generation Progress Indicator */}
         {isExportingVideo && (
-          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 flex flex-col gap-2.5">
-            <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+          <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 space-y-2">
+            <div className="flex items-center justify-between text-xs font-semibold text-emerald-300">
               <span className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
-                جارٍ إنشاء الفيديو...
+                جاري إنشاء الفيديو...
               </span>
               <span className="font-mono">{videoProgress}%</span>
             </div>
             <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden">
               <div
-                className="bg-emerald-500 h-full rounded-full transition-all duration-150"
+                className="bg-emerald-500 h-full rounded-full transition-all duration-300"
                 style={{ width: `${videoProgress}%` }}
               />
             </div>
-            <span className="text-[11px] text-slate-400">
-              يتم دمج إطارات الفيديو عالية الدقة مع صوت الإلقاء النبوي (1.mp3) باستهلاك منخفض للذاكرة...
-            </span>
+            <p className="text-[11px] text-slate-400 text-center">
+              يرجى الانتظار، يتم دمج إطارات الفيديو مع صوت التلاوة...
+            </p>
           </div>
         )}
 
-        {/* Ready Generated Video & "Save to Phone" Section */}
+        {/* Ready Generated Video & Save to Phone Section */}
         {generatedVideo && !isExportingVideo && (
-          <div className="p-4 rounded-2xl bg-slate-800/80 border border-emerald-500/40 flex flex-col gap-3">
-            <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+          <div className="p-4 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-3">
+            <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
               <span className="flex items-center gap-1.5">
                 <CheckCircle className="w-4 h-4 text-emerald-400" />
-                فيديو الريلز جاهز الآن!
+                الفيديو جاهز الآن
               </span>
               <span className="text-[11px] font-mono text-slate-400 uppercase">
                 {generatedVideo.extension} • 720x1280
@@ -307,7 +299,7 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
             </div>
 
             {/* Video Preview */}
-            <div className="w-full max-h-48 rounded-xl overflow-hidden bg-black flex items-center justify-center">
+            <div className="w-full max-h-48 rounded-xl overflow-hidden bg-black flex justify-center">
               <video
                 src={generatedVideo.objectUrl}
                 controls
@@ -319,26 +311,20 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
             {/* Save to Phone Button */}
             <button
               onClick={handleSaveVideoToPhone}
-              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold text-sm shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 transition active:scale-95"
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm shadow-lg flex items-center justify-center gap-2 transition active:scale-98"
             >
-              <Download className="w-5 h-5" />
-              <span>حفظ الفيديو على الهاتف</span>
+              <Download className="w-4 h-4" />
+              <span>حفظ الفيديو مباشرة على الهاتف</span>
             </button>
           </div>
         )}
 
-        {/* Video Duration Selector */}
-        <div className="flex flex-col gap-2 p-3 rounded-2xl bg-slate-800/50 border border-slate-700/60">
-          <label className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <Volume2 className="w-4 h-4 text-emerald-400" />
-              مدة الفيديو مع الصوت النبوي (1.mp3)
-            </span>
-            <span className="text-[11px] text-emerald-400 font-mono">
-              {hadith.audioDuration} ثانية
-            </span>
+        {/* Options Selection */}
+        <div className="space-y-3">
+          <label className="block text-xs font-semibold text-slate-300">
+            تحديد مدة الفيديو المراد إنشاؤه:
           </label>
-          <div className="grid grid-cols-2 gap-2 mt-1">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setVideoDurationMode('full')}
               disabled={isBusy}
@@ -348,7 +334,7 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
                   : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
               } disabled:opacity-50`}
             >
-              مدة القراءة ({Math.min(hadith.audioDuration || 30, 60)} ثانية)
+              كامل القراءة ({hadith.audioDuration || 30}ثانية)
             </button>
             <button
               onClick={() => setVideoDurationMode('short')}
@@ -370,9 +356,9 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
           <button
             onClick={handleGenerateVideo}
             disabled={isBusy}
-            className="flex items-center gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-bold text-right shadow-lg transition active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-600/30 to-teal-600/30 border border-emerald-500/30 hover:border-emerald-500/60 transition text-right disabled:opacity-50"
           >
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
               {isExportingVideo ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
@@ -380,11 +366,11 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
               )}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-bold">
-                {isExportingVideo ? 'جارٍ إنشاء الفيديو...' : 'إنشاء فيديو ريلز بالصوت'}
+              <span className="text-xs font-bold text-slate-200">
+                {isExportingVideo ? 'جاري إنشاء الفيديو...' : 'إنشاء فيديو ريلز بالصوت'}
               </span>
-              <span className="text-[10px] text-emerald-100 font-normal">
-                720x1280 HD مدمج بالصوت
+              <span className="text-[10px] text-emerald-300/80">
+                مدمج بصوت التلاوة 720x1280
               </span>
             </div>
           </button>
@@ -393,9 +379,9 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
           <button
             onClick={handleExportImage}
             disabled={isBusy}
-            className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-bold text-right shadow transition active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 transition text-right disabled:opacity-50"
           >
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0">
               {isExportingImage ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
@@ -403,10 +389,8 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
               )}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-bold">حفظ كصورة ريلز (PNG)</span>
-              <span className="text-[10px] text-slate-400 font-normal">
-                جاهزة للحالات والقصص والإنستغرام
-              </span>
+              <span className="text-xs font-bold text-slate-200">حفظ كصورة ريلز (PNG)</span>
+              <span className="text-[10px] text-slate-400">جاهزة للحالات والقصص</span>
             </div>
           </button>
 
@@ -414,9 +398,9 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
           <button
             onClick={handleExportZip}
             disabled={isBusy}
-            className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-bold text-right shadow transition active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 transition text-right disabled:opacity-50"
           >
-            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
               {isExportingZip ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
@@ -424,12 +408,10 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
               )}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-bold">
-                {isExportingZip ? zipStatusText || 'جاري الضغط...' : 'حزمة الأحاديث (ZIP)'}
+              <span className="text-xs font-bold text-slate-200">
+                {isExportingZip ? zipStatusText || 'جاري الضغط...' : 'تصدير حزمة ZIP'}
               </span>
-              <span className="text-[10px] text-slate-400 font-normal">
-                صورة + نصوص + 42 حديثاً
-              </span>
+              <span className="text-[10px] text-slate-400">صورة + نصوص + صوت</span>
             </div>
           </button>
 
@@ -437,9 +419,9 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
           <button
             onClick={handleCopyText}
             disabled={isBusy}
-            className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-bold text-right shadow transition active:scale-95 disabled:opacity-50"
+            className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-800/80 border border-slate-700/80 hover:bg-slate-800 transition text-right disabled:opacity-50"
           >
-            <div className="w-9 h-9 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-400 flex items-center justify-center shrink-0">
               {copiedText ? (
                 <Check className="w-5 h-5 text-emerald-400" />
               ) : (
@@ -447,40 +429,29 @@ ${hadith.explanation ? `💡 الفائدة: ${hadith.explanation}` : ''}
               )}
             </div>
             <div className="flex flex-col">
-              <span className="text-xs font-bold">
-                {copiedText ? 'تم نسخ النص بنجاح!' : 'نسخ النص المنسق'}
+              <span className="text-xs font-bold text-slate-200">
+                {copiedText ? 'تم نسخ النص بنجاح!' : 'نسخ النص للمنشور'}
               </span>
-              <span className="text-[10px] text-slate-400 font-normal">
-                جاهز للصق في كابشن النشر
-              </span>
+              <span className="text-[10px] text-slate-400">جاهز للحق في الكابشن</span>
             </div>
           </button>
         </div>
 
-        {/* Android Project Status Card */}
-        <div className="w-full p-3 rounded-2xl bg-slate-900 border border-emerald-500/30 text-emerald-300 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="font-semibold">مشروع أندرويد الأصلي مدمج في مجلد (android/)</span>
-          </div>
-          <span className="text-[10px] text-slate-400 font-mono">195 MB</span>
-        </div>
-
-        {/* Share Button for Mobile */}
+        {/* Share Button for WhatsApp */}
         <button
-          onClick={handleShare}
+          onClick={handleWhatsAppShare}
           disabled={isBusy}
-          className="w-full py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-800 border border-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition disabled:opacity-50"
+          className="w-full py-2.5 rounded-xl bg-green-600 hover:bg-green-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition active:scale-98 shadow-md"
         >
-          <Share2 className="w-4 h-4 text-emerald-400" />
-          <span>مشاركة مباشرة عبر تطبيقات الهاتف وواتساب وتيك توك</span>
+          <Share2 className="w-4 h-4" />
+          <span>مشاركة مباشرة عبر واتساب</span>
         </button>
 
         {/* Android Notice */}
-        <div className="p-3 rounded-2xl bg-slate-950/60 border border-white/5 flex items-center gap-2 text-[11px] text-slate-400">
+        <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-[10px] text-slate-400">
           <Smartphone className="w-4 h-4 text-teal-400 shrink-0" />
           <span>
-            تم تحسين التصدير ليعمل بسلاسة تامة على هواتف أندرويد ومتصفح Chrome دون استهلاك زائد للذاكرة.
+            تم تحسين التصدير ليعمل بسلاسة على كافة هواتف الأندرويد ومتصفح Chrome.
           </span>
         </div>
       </div>
